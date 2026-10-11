@@ -6,6 +6,8 @@ from indicators import (
     calculate_rsi,
 )
 
+from typing import Optional
+
 import pandas as pd
 
 # region Score Generation
@@ -507,6 +509,48 @@ def calculate_predictive_score(stock_data):
 
     return pd.DataFrame({"Score": normalized_scores, "Confidence": confidence_levels})
 
+
+def get_contradictory_factors(
+    stock_data: pd.DataFrame,
+    signal_1d: str,
+    state_4h: Optional[str],
+    fundamental_metrics
+) -> list[str]:
+    factors = []
+    
+    last_row = stock_data.iloc[-1]
+    rsi = last_row.get("RSI")
+    close = last_row.get("Close")
+    sma_50 = last_row.get("SMA_50")  # Se calculada
+    atr = last_row.get("ATR")
+    
+    # 1. Divergência Temporal (1D vs 4H)
+    if signal_1d == "BUY" and state_4h == "Bearish":
+        factors.append("Tempo: 1D em Alta (BUY), mas 4H em Recuo (Bearish).")
+    elif signal_1d == "BUY" and state_4h == "Neutral":
+        factors.append("Tempo: 1D em Alta (BUY), mas 4H sem Direção Definida (Neutral).")
+        
+    # 2. RSI Extremo
+    if rsi is not None:
+        if signal_1d == "BUY" and rsi > 70:
+            factors.append(f"Momento: Sinal BUY, mas RSI em Sobrecompra Extrema ({rsi:.1f} > 70).")
+        elif signal_1d in ["SELL", "NEUTRAL"] and rsi < 30:
+            factors.append(f"Momento: Tendência Fraca, mas RSI em Sobrevenda Extrema ({rsi:.1f} < 30).")
+            
+    # 3. Valuation Fricção
+    if signal_1d == "BUY" and fundamental_metrics is not None:
+        if fundamental_metrics.growth_level == "OVERVALUED GROWTH":
+            factors.append("Valuation: Sinal Técnico BUY, mas Empresa Sobreavaliada (Overvalued Growth).")
+        elif fundamental_metrics.decision == "FAIL":
+            factors.append("Fundamentais: Sinal Técnico BUY em Conflito com Fundamentais Reprovados (FAIL).")
+
+    # 4. Esticamento de Preço vs Média (Se SMA_50 e ATR existirem)
+    if close is not None and sma_50 is not None and atr is not None and atr > 0:
+        dist_sma = (close - sma_50) / atr
+        if dist_sma > 2.5:
+            factors.append(f"Volatilidade: Preço esticado {dist_sma:.1f}x ATR acima da Média de 50 dias.")
+
+    return factors
 
 # endregion
 

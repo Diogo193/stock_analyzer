@@ -7,7 +7,11 @@ from fundamentals import (
 )
 from indicators import calculate_atr
 from risk import calculate_position_size
-from technical_score import calculate_predictive_score, calculate_technical_score_4h
+from technical_score import (
+    calculate_predictive_score,
+    calculate_technical_score_4h,
+    get_contradictory_factors,
+)
 from validation import run_validation_pipeline
 from backtest import (
     calculate_sharpe_ratio,
@@ -135,6 +139,7 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
     last_close = last_row["Close"]
     last_atr = last_row["ATR"]
     latest_signal = score_sigs.iloc[-1]
+    rsi = last_row["RSI"] if "RSI" in last_row else None
 
     # 4. Calcular Dimensionamento de Posição e Stop
     shares_to_buy, suggested_stop = calculate_position_size(
@@ -191,6 +196,10 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
     )
     state_4h_str = technical_score_4h if technical_score_4h is not None else "N/A"
 
+    contradictions = get_contradictory_factors(
+        stock_data, latest_signal, technical_score_4h, fundamental_metrics
+    )
+
     # 5. Imprimir Painel de Suporte à Decisão no Terminal
     print("=" * 65)
     print(f"      PAINEL DE DECISÃO OPERACIONAL: {symbol}")
@@ -201,36 +210,94 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
     print(f"Score Técnico 4H     : {technical_score_4h}")
     print(f"Estado Intradiário 4H: {state_4h_str}")
     print("-" * 65)
+    print("FATORES CONTRADITÓRIOS E ALERTAS DE DIVERGÊNCIA:")
+    if contradictions:
+        for factor in contradictions:
+            print(f"  ⚠️  [ALERTA] {factor}")
+    else:
+        print("  ✅ [OK] Nenhum conflito detetado entre indicadores e timeframes.")
 
     # Decisão de Ação (Árvore de Decisão Reestruturada)
     if latest_signal == "BUY":
-        if not fundamental_metrics.is_approved:
+        if fundamental_metrics.relative_score is None:
+            print(f"SINAL DO SISTEMA     : [ WAIT / FUNDAMENTAL INSUFFICIENT ] (Confiança >= 0.75)")
+            print(f"Ação Recomendada     : AGUARDAR - MÉTRICAS FUNDAMENTAIS INSUFICIENTES")
+            print(
+                f"Motivo da Cautela    : Métricas Fundamentais insuficientes para avaliação. Aguardar mais dados ou informações."
+            )
+        elif fundamental_metrics.relative_score is not None and fundamental_metrics.relative_score > -0.20 and fundamental_metrics.relative_score < 0:
+            print(f"SINAL DO SISTEMA     : [ WAIT / CAUTIOUS ] (Confiança >= 0.75)")
+            print(f"Ação Recomendada     : ESPERAR - AVALIAR FUNDAMENTOS ANTES DE ABRIR POSIÇÃO")
+            print(
+                f"Motivo da Cautela    : Métricas Fundamentais medianas. Avaliar risco antes de entrar."
+            )
+            print(
+                f"Score Relativo       : {rel_score_fmt} | Decisão: {fundamental_metrics.decision}"
+            )
+        elif fundamental_metrics.relative_score is not None and fundamental_metrics.relative_score <= -0.20 and fundamental_metrics.relative_score >= -0.50:
             print(f"SINAL DO SISTEMA     : [ WATCH / BLOQUEADO ] (Confiança >= 0.75)")
             print(f"Ação Recomendada     : NÃO ABRIR POSIÇÃO - AVALIAR FUNDAMENTOS")
-            print(f"Motivo da Cautela    : Métricas Fundamentais NÃO APROVADAS")
+            print(f"Motivo da Cautela    : Métricas Fundamentais fracas. Vale a pena aguardar uma oportunidade melhor.")
+            print(
+                f"Score Relativo       : {rel_score_fmt} | Decisão: {fundamental_metrics.decision}"
+            )
+        elif fundamental_metrics.relative_score is not None and fundamental_metrics.relative_score < -0.50 or fundamental_metrics.growth_level == "OVERVALUED WITHOUT SUPPORT":
+            print(f"SINAL DO SISTEMA     : [ AVOID ] (Confiança >= 0.75)")
+            print(f"Ação Recomendada     : NÃO ABRIR POSIÇÃO - AVALIAR FUNDAMENTOS")
+            print(
+                f"Motivo da Cautela    : Métricas Fundamentais extremamente fracas. É melhor ignorar este ativo por enquanto."
+            )
             print(
                 f"Score Relativo       : {rel_score_fmt} | Decisão: {fundamental_metrics.decision}"
             )
         else:
             if technical_score_4h == "Bullish":
-                print(f"SINAL DO SISTEMA     : [ BUY / COMPRA ] (Confiança >= 0.75)")
-                print(
-                    f"Ação Recomendada     : ABRIR NOVA POSIÇÃO (COMPRA CONFIRMADA em 1D + 4H)"
-                )
-                print(
-                    f"Stop-Loss Inicial    : ${suggested_stop:.2f} (-{risk_cfg.atr_multiplier}x ATR)"
-                )
-                print(
-                    f"Tamanho da Posição   : {shares_to_buy} ações (~${position_cost:.2f} | {portfolio_allocation_pct:.1f}% do capital)"
-                )
+                if rsi is not None and rsi > 75:
+                    print(f"SINAL DO SISTEMA     : [ REDUCE / COMPRA COM RESALVA OU TOMAR LUCROS ] (Confiança >= 0.75)")
+                    print(
+                        f"Ação Recomendada     : ABRIR POSIÇÃO COM CAUTELA (1D e 4H em Alta, mas RSI > 75)"
+                    )
+                    print(
+                        f"Motivo da Cautela    : RSI elevado ({rsi:.1f}), indicando possível sobrecompra. Avaliar risco antes de entrar."
+                    )
+                    print(
+                        f"Stop-Loss Inicial    : ${suggested_stop:.2f} (-{risk_cfg.atr_multiplier}x ATR)"
+                    )
+                    print(
+                        f"Tamanho da Posição   : {shares_to_buy/2} ações (~${position_cost/2:.2f} | {portfolio_allocation_pct/2:.1f}% do capital)"
+                    )
+                    print(
+                        f"Se tiver posição aberta, considere reduzir 50% da posição para tomar lucros devido ao RSI elevado."
+                    )
+                else:
+                    print(f"SINAL DO SISTEMA     : [ BUY / COMPRA ] (Confiança >= 0.75)")
+                    print(
+                        f"Ação Recomendada     : ABRIR NOVA POSIÇÃO (COMPRA CONFIRMADA em 1D + 4H)"
+                    )
+                                
+                    print(
+                        f"Stop-Loss Inicial    : ${suggested_stop:.2f} (-{risk_cfg.atr_multiplier}x ATR)"
+                    )
+                    print(
+                        f"Tamanho da Posição   : {shares_to_buy} ações (~${position_cost:.2f} | {portfolio_allocation_pct:.1f}% do capital)"
+                    )
             elif technical_score_4h == "Bearish":
-                print(f"SINAL DO SISTEMA     : [ WAIT / PULLBACK ] (Confiança >= 0.75)")
-                print(
-                    f"Ação Recomendada     : AGUARDAR PULLBACK (1D em Alta, mas 4H em Recuo)"
-                )
-                print(
-                    f"Motivo da Cautela    : 4H em Tendência de Baixa (Aguardar Exaustão do Recuo)"
-                )
+                if rsi is not None and rsi > 75:
+                    print(f"SINAL DO SISTEMA     : [ WAIT / PULLBACK NECESSÁRIO ] (Confiança >= 0.75)")
+                    print(
+                        f"Ação Recomendada     : AGUARDAR PULLBACK (1D em Alta, mas 4H em Recuo e RSI > 75)"
+                    )
+                    print(
+                        f"Motivo da Cautela    : RSI elevado ({rsi:.1f}), indicando possível sobrecompra. Aguardar exaustão do recuo antes de entrar."
+                    )
+                else:
+                    print(f"SINAL DO SISTEMA     : [ WAIT / PULLBACK ] (Confiança >= 0.75)")
+                    print(
+                        f"Ação Recomendada     : AGUARDAR PULLBACK (1D em Alta, mas 4H em Recuo)"
+                    )
+                    print(
+                        f"Motivo da Cautela    : 4H em Tendência de Baixa (Aguardar Exaustão do Recuo)"
+                    )
             elif technical_score_4h == "Neutral":
                 print(f"SINAL DO SISTEMA     : [ WAIT / AGUARDAR ] (Confiança >= 0.75)")
                 print(
@@ -290,4 +357,7 @@ if __name__ == "__main__":
     get_daily_decision("NVDA", capital=10000.0)
     get_daily_decision("VICI", capital=10000.0)
     get_daily_decision("GC=F", capital=10000.0)
-
+    get_daily_decision("EURUSD=X", capital=10000.0)
+    get_daily_decision("TSLA", capital=10000.0)
+    get_daily_decision("AAPL", capital=10000.0)
+    get_daily_decision("MSFT", capital=10000.0)

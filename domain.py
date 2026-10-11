@@ -129,4 +129,4 @@ class ValidationResult:
 
     @property
     def edge_decay(self) -> float:
-        return self.out_of_sample_performance - self.in_sample_performanc
+        return self.out_of_sample_performance - self.in_sample_performance
