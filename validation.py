@@ -4,6 +4,10 @@ from technical_score import calculate_future_return
 from domain import ValidationResult, PerformanceMetrics
 import pandas as pd
 
+def future_split_return(split_df, horizon=20):
+    split_return = split_df.copy()
+    split_return["Future_Return"] = calculate_future_return(split_return, horizon)
+    return split_return
 
 def prepare_oos_data(stock_data, horizon=20, in_sample_ratio=0.7):
     # 1. Ordenar os dados por data
@@ -23,36 +27,37 @@ def prepare_oos_data(stock_data, horizon=20, in_sample_ratio=0.7):
     df.loc[(macro_bullish) & (mid_bullish) & (short_bullish), "Composite_Score"] = 1
     df.loc[(~macro_bullish) & (~mid_bullish) & (~short_bullish), "Composite_Score"] = -1
 
-    # 3. Calcular o retorno futuro
-    df["Future_Return_20d"] = calculate_future_return(df, horizon)
 
-    # 4. Fatiamento In-Sample (70%) e Out-of-Sample (30%)
+    # 3. Fatiamento In-Sample (70%) e Out-of-Sample (30%)
     split_index = int(len(df) * in_sample_ratio)
     df_in_sample = df.iloc[:split_index]
     df_out_of_sample = df.iloc[split_index:]
+
+    df_in_sample = future_split_return(df_in_sample, horizon)
+    df_out_of_sample = future_split_return(df_out_of_sample, horizon)
 
     return df_in_sample, df_out_of_sample
 
 
 def evaluate_slice(df_slice, indicator_col, target_state):
     # 1. Limpeza de nulos no subconjunto
-    clean_df = df_slice.dropna(subset=[indicator_col, "Future_Return_20d"])
+    clean_df = df_slice.dropna(subset=[indicator_col, "Future_Return"])
 
     # 2. Métricas do Baseline (Amostra Geral)
-    baseline_mean = clean_df["Future_Return_20d"].mean()
-    baseline_median = clean_df["Future_Return_20d"].median()
+    baseline_mean = clean_df["Future_Return"].mean()
+    baseline_median = clean_df["Future_Return"].median()
     baseline_count = clean_df.shape[0]
     baseline_pos_rate = (
-        (clean_df["Future_Return_20d"] > 0).mean() * 100 if baseline_count > 0 else 0.0
+        (clean_df["Future_Return"] > 0).mean() * 100 if baseline_count > 0 else 0.0
     )
 
     # 3. Métricas do Estado Alvo (Bullish)
     filtered_df = clean_df[clean_df[indicator_col] == target_state]
-    obs_mean = filtered_df["Future_Return_20d"].mean()
-    obs_median = filtered_df["Future_Return_20d"].median()
+    obs_mean = filtered_df["Future_Return"].mean()
+    obs_median = filtered_df["Future_Return"].median()
     obs_count = filtered_df.shape[0]
     obs_pos_rate = (
-        (filtered_df["Future_Return_20d"] > 0).mean() * 100 if obs_count > 0 else 0.0
+        (filtered_df["Future_Return"] > 0).mean() * 100 if obs_count > 0 else 0.0
     )
 
     # 4. Cálculo do Mean Edge

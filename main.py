@@ -110,6 +110,19 @@ def run_cross_asset_validation():
     plot_equity_curve(equity_curve, stock_data, "NVDA")
 
 
+def validation_summary(symbols, period="5y"):
+    results, summary = run_validation_pipeline(symbols, period)
+
+    print("\n=== VALIDATION SUMMARY ===")
+    print(
+        f"{'Symbol':<10}  {'In-Sample Baseline Count':<20} {'Out-of-Sample Baseline Count':<20} {'In-Sample Bullish Count':<20} {'Out-of-Sample Bullish Count':<20} {'Stable':<10}"
+    )
+    for result in results:
+        print(
+            f"{result.symbol:<10} {result.baseline_in_sample.count:<20} {result.baseline_out_of_sample.count:<20} {result.bullish_in_sample.count:<20} {result.bullish_out_of_sample.count:<20} {'Yes' if result.is_stable else 'No':<10}"
+        )
+
+
 def get_daily_decision(symbol: str, capital: float = 10000.0):
     # 1. Carregar dados recentes do ativo
     stock_data = get_stock_data(symbol, period="5y")
@@ -220,28 +233,48 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
     # Decisão de Ação (Árvore de Decisão Reestruturada)
     if latest_signal == "BUY":
         if fundamental_metrics.relative_score is None:
-            print(f"SINAL DO SISTEMA     : [ WAIT / FUNDAMENTAL INSUFFICIENT ] (Confiança >= 0.75)")
-            print(f"Ação Recomendada     : AGUARDAR - MÉTRICAS FUNDAMENTAIS INSUFICIENTES")
+            print(
+                f"SINAL DO SISTEMA     : [ WAIT / FUNDAMENTAL INSUFFICIENT ] (Confiança >= 0.75)"
+            )
+            print(
+                f"Ação Recomendada     : AGUARDAR - MÉTRICAS FUNDAMENTAIS INSUFICIENTES"
+            )
             print(
                 f"Motivo da Cautela    : Métricas Fundamentais insuficientes para avaliação. Aguardar mais dados ou informações."
             )
-        elif fundamental_metrics.relative_score is not None and fundamental_metrics.relative_score > -0.20 and fundamental_metrics.relative_score < 0:
+        elif (
+            fundamental_metrics.relative_score is not None
+            and fundamental_metrics.relative_score > -0.20
+            and fundamental_metrics.relative_score < 0
+        ):
             print(f"SINAL DO SISTEMA     : [ WAIT / CAUTIOUS ] (Confiança >= 0.75)")
-            print(f"Ação Recomendada     : ESPERAR - AVALIAR FUNDAMENTOS ANTES DE ABRIR POSIÇÃO")
+            print(
+                f"Ação Recomendada     : ESPERAR - AVALIAR FUNDAMENTOS ANTES DE ABRIR POSIÇÃO"
+            )
             print(
                 f"Motivo da Cautela    : Métricas Fundamentais medianas. Avaliar risco antes de entrar."
             )
             print(
                 f"Score Relativo       : {rel_score_fmt} | Decisão: {fundamental_metrics.decision}"
             )
-        elif fundamental_metrics.relative_score is not None and fundamental_metrics.relative_score <= -0.20 and fundamental_metrics.relative_score >= -0.50:
+        elif (
+            fundamental_metrics.relative_score is not None
+            and fundamental_metrics.relative_score <= -0.20
+            and fundamental_metrics.relative_score >= -0.50
+        ):
             print(f"SINAL DO SISTEMA     : [ WATCH / BLOQUEADO ] (Confiança >= 0.75)")
             print(f"Ação Recomendada     : NÃO ABRIR POSIÇÃO - AVALIAR FUNDAMENTOS")
-            print(f"Motivo da Cautela    : Métricas Fundamentais fracas. Vale a pena aguardar uma oportunidade melhor.")
+            print(
+                f"Motivo da Cautela    : Métricas Fundamentais fracas. Vale a pena aguardar uma oportunidade melhor."
+            )
             print(
                 f"Score Relativo       : {rel_score_fmt} | Decisão: {fundamental_metrics.decision}"
             )
-        elif fundamental_metrics.relative_score is not None and fundamental_metrics.relative_score < -0.50 or fundamental_metrics.growth_level == "OVERVALUED WITHOUT SUPPORT":
+        elif (
+            fundamental_metrics.relative_score is not None
+            and fundamental_metrics.relative_score < -0.50
+            or fundamental_metrics.growth_level == "OVERVALUED WITHOUT SUPPORT"
+        ):
             print(f"SINAL DO SISTEMA     : [ AVOID ] (Confiança >= 0.75)")
             print(f"Ação Recomendada     : NÃO ABRIR POSIÇÃO - AVALIAR FUNDAMENTOS")
             print(
@@ -253,7 +286,9 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
         else:
             if technical_score_4h == "Bullish":
                 if rsi is not None and rsi > 75:
-                    print(f"SINAL DO SISTEMA     : [ REDUCE / COMPRA COM RESALVA OU TOMAR LUCROS ] (Confiança >= 0.75)")
+                    print(
+                        f"SINAL DO SISTEMA     : [ REDUCE / COMPRA COM RESALVA OU TOMAR LUCROS ] (Confiança >= 0.75)"
+                    )
                     print(
                         f"Ação Recomendada     : ABRIR POSIÇÃO COM CAUTELA (1D e 4H em Alta, mas RSI > 75)"
                     )
@@ -270,11 +305,13 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
                         f"Se tiver posição aberta, considere reduzir 50% da posição para tomar lucros devido ao RSI elevado."
                     )
                 else:
-                    print(f"SINAL DO SISTEMA     : [ BUY / COMPRA ] (Confiança >= 0.75)")
+                    print(
+                        f"SINAL DO SISTEMA     : [ BUY / COMPRA ] (Confiança >= 0.75)"
+                    )
                     print(
                         f"Ação Recomendada     : ABRIR NOVA POSIÇÃO (COMPRA CONFIRMADA em 1D + 4H)"
                     )
-                                
+
                     print(
                         f"Stop-Loss Inicial    : ${suggested_stop:.2f} (-{risk_cfg.atr_multiplier}x ATR)"
                     )
@@ -283,7 +320,9 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
                     )
             elif technical_score_4h == "Bearish":
                 if rsi is not None and rsi > 75:
-                    print(f"SINAL DO SISTEMA     : [ WAIT / PULLBACK NECESSÁRIO ] (Confiança >= 0.75)")
+                    print(
+                        f"SINAL DO SISTEMA     : [ WAIT / PULLBACK NECESSÁRIO ] (Confiança >= 0.75)"
+                    )
                     print(
                         f"Ação Recomendada     : AGUARDAR PULLBACK (1D em Alta, mas 4H em Recuo e RSI > 75)"
                     )
@@ -291,7 +330,9 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
                         f"Motivo da Cautela    : RSI elevado ({rsi:.1f}), indicando possível sobrecompra. Aguardar exaustão do recuo antes de entrar."
                     )
                 else:
-                    print(f"SINAL DO SISTEMA     : [ WAIT / PULLBACK ] (Confiança >= 0.75)")
+                    print(
+                        f"SINAL DO SISTEMA     : [ WAIT / PULLBACK ] (Confiança >= 0.75)"
+                    )
                     print(
                         f"Ação Recomendada     : AGUARDAR PULLBACK (1D em Alta, mas 4H em Recuo)"
                     )
@@ -353,11 +394,4 @@ def get_daily_decision(symbol: str, capital: float = 10000.0):
 
 
 if __name__ == "__main__":
-    get_daily_decision("O", capital=10000.0)
-    get_daily_decision("NVDA", capital=10000.0)
-    get_daily_decision("VICI", capital=10000.0)
-    get_daily_decision("GC=F", capital=10000.0)
-    get_daily_decision("EURUSD=X", capital=10000.0)
-    get_daily_decision("TSLA", capital=10000.0)
-    get_daily_decision("AAPL", capital=10000.0)
-    get_daily_decision("MSFT", capital=10000.0)
+    validation_summary(ALL_SYMBOLS, period="5y")
