@@ -1,6 +1,6 @@
 from data import get_stock_data
 from indicators import calculate_ema, calculate_macd, calculate_rsi, calculate_sma
-from technical_score import calculate_future_return
+from technical_score import calculate_future_return, calculate_predictive_score
 from domain import ValidationResult, PerformanceMetrics
 import pandas as pd
 
@@ -13,19 +13,10 @@ def prepare_oos_data(stock_data, horizon=20, in_sample_ratio=0.7):
     # 1. Ordenar os dados por data
     df = stock_data.sort_values("Date").reset_index(drop=True)
 
-    # 2. Calcular o MACD e definir o Macd_Score
-    sma_200 = calculate_sma(df["Close"], 200)
-    sma_50 = calculate_sma(df["Close"], 50)
-    ema_20 = calculate_ema(df["Close"], 20)
+    df["Score"] = calculate_predictive_score(df)["Score"]
+    df = df.dropna(subset=["Score"])  # Remover valores nulos antes de calcular o estado alvo
 
-    macro_bullish = df["Close"] > sma_200
-    mid_bullish = ema_20 > sma_50
-    short_bullish = df["Close"] > ema_20
-
-    df["Composite_Score"] = 0
-
-    df.loc[(macro_bullish) & (mid_bullish) & (short_bullish), "Composite_Score"] = 1
-    df.loc[(~macro_bullish) & (~mid_bullish) & (~short_bullish), "Composite_Score"] = -1
+    df["Bullish"] = (df["Score"] >= 0.75).astype(int)
 
 
     # 3. Fatiamento In-Sample (70%) e Out-of-Sample (30%)
@@ -81,11 +72,10 @@ def validate_symbol(symbol, period):
 
     df_is_data, df_oos_data = prepare_oos_data(stock_data)
 
-    is_metrics = evaluate_slice(df_is_data, "Composite_Score", 1)
+    is_metrics = evaluate_slice(df_is_data, "Bullish", 1)
 
-    oos_metrics = evaluate_slice(df_oos_data, "Composite_Score", 1)
+    oos_metrics = evaluate_slice(df_oos_data, "Bullish", 1)
 
-    edge_decay = oos_metrics["mean_edge"] - is_metrics["mean_edge"]
     is_stable = (is_metrics["mean_edge"] > 0) and (oos_metrics["mean_edge"] > 0)
 
     new_results = ValidationResult(

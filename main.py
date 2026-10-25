@@ -115,11 +115,11 @@ def validation_summary(symbols, period="5y"):
 
     print("\n=== VALIDATION SUMMARY ===")
     print(
-        f"{'Symbol':<10}  {'In-Sample Baseline Count':<20} {'Out-of-Sample Baseline Count':<20} {'In-Sample Bullish Count':<20} {'Out-of-Sample Bullish Count':<20} {'Stable':<10}"
+        f"{'Symbol':<10} {'IS Base Count':<15} {'OOS Base Count':<15} {'IS Bull Count':<15} {'OOS Bull Count':<15} {'IS Mean Edge':<15} {'OOS Mean Edge':<15} {'Edge Decay':<15} {'Stable':<10}"
     )
     for result in results:
         print(
-            f"{result.symbol:<10} {result.baseline_in_sample.count:<20} {result.baseline_out_of_sample.count:<20} {result.bullish_in_sample.count:<20} {result.bullish_out_of_sample.count:<20} {'Yes' if result.is_stable else 'No':<10}"
+            f"{result.symbol:<10} {result.baseline_in_sample.count:<17}  {result.baseline_out_of_sample.count:<15} {result.bullish_in_sample.count:<15} {result.bullish_out_of_sample.count:<15} {result.in_sample_performance:<15.2f} {result.out_of_sample_performance:<15.2f} {result.edge_decay:<15.2f} {'Yes' if result.is_stable else 'No':<10}"
         )
 
 
